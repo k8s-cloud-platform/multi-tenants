@@ -22,27 +22,18 @@ import (
 	"fmt"
 
 	"k8s.io/client-go/tools/clientcmd/api"
-	certutil "k8s.io/client-go/util/cert"
 
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/secret"
 )
 
-// New creates a new Kubeconfig using the cluster name and specified endpoint.
-func New(clusterName, endpoint string, caCert *x509.Certificate, caKey crypto.Signer) (*api.Config, error) {
-	cfg := &secret.CertsConfig{
-		Config: certutil.Config{
-			CommonName:   "kubernetes-admin",
-			Organization: []string{"system:masters"},
-			Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		},
-	}
-
-	cert, key, err := secret.NewCertAndKey(caCert, caKey, cfg)
+// NewWithSecret creates a new Kubeconfig using the cluster name and specified endpoint.
+func NewWithSecret(clusterName, endpoint string, caCert *x509.Certificate, caKey crypto.Signer, config *secret.CertsConfig) (*api.Config, error) {
+	cert, key, err := secret.NewCertAndKey(caCert, caKey, config)
 	if err != nil {
 		return nil, err
 	}
 
-	userName := fmt.Sprintf("%s-admin", clusterName)
+	userName := fmt.Sprintf("%s-%s", clusterName, config.CommonName)
 	contextName := fmt.Sprintf("%s@%s", userName, clusterName)
 
 	return &api.Config{
@@ -62,6 +53,33 @@ func New(clusterName, endpoint string, caCert *x509.Certificate, caKey crypto.Si
 			userName: {
 				ClientKeyData:         secret.EncodePrivateKeyPEM(key),
 				ClientCertificateData: secret.EncodeCertPEM(cert),
+			},
+		},
+		CurrentContext: contextName,
+	}, nil
+}
+
+// NewWithToken creates a new Kubeconfig using the cluster name and specified endpoint.
+func NewWithToken(clusterName, endpoint string, caCert *x509.Certificate, token string, config *secret.CertsConfig) (*api.Config, error) {
+	userName := fmt.Sprintf("%s-%s", clusterName, config.CommonName)
+	contextName := fmt.Sprintf("%s@%s", userName, clusterName)
+
+	return &api.Config{
+		Clusters: map[string]*api.Cluster{
+			clusterName: {
+				Server:                   endpoint,
+				CertificateAuthorityData: secret.EncodeCertPEM(caCert),
+			},
+		},
+		Contexts: map[string]*api.Context{
+			contextName: {
+				Cluster:  clusterName,
+				AuthInfo: userName,
+			},
+		},
+		AuthInfos: map[string]*api.AuthInfo{
+			userName: {
+				Token: token,
 			},
 		},
 		CurrentContext: contextName,

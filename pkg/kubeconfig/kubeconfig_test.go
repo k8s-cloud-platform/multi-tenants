@@ -17,19 +17,49 @@ limitations under the License.
 package kubeconfig
 
 import (
+	"crypto/x509"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/tools/clientcmd"
+	certutil "k8s.io/client-go/util/cert"
 
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/secret"
 )
 
-func TestKubeconfig(t *testing.T) {
+func TestWithSecret(t *testing.T) {
 	caCert, caKey, err := secret.NewCA()
 	assert.NoError(t, err)
 
-	c, err := New("tenant-cluster", "127.0.0.1:6443", caCert, caKey)
+	cfg := &secret.CertsConfig{
+		Config: certutil.Config{
+			CommonName:   "kubernetes-admin",
+			Organization: []string{"system:masters"},
+			Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		},
+	}
+
+	c, err := NewWithSecret("tenant-cluster", "127.0.0.1:6443", caCert, caKey, cfg)
+	assert.NoError(t, err)
+
+	config, err := clientcmd.Write(*c)
+	assert.NoError(t, err)
+	t.Logf("%s", config)
+}
+
+func TestWithToken(t *testing.T) {
+	caCert, _, err := secret.NewCA()
+	assert.NoError(t, err)
+
+	cfg := &secret.CertsConfig{
+		Config: certutil.Config{
+			CommonName:   "kubernetes-token",
+			Organization: []string{"system:token"},
+			Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		},
+	}
+
+	c, err := NewWithToken("tenant-cluster", "127.0.0.1:6443", caCert, "token123", cfg)
 	assert.NoError(t, err)
 
 	config, err := clientcmd.Write(*c)
