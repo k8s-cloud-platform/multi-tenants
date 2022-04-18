@@ -110,6 +110,16 @@ verify-boilerplate: ## Verify boilerplate text exists in each file
 	hack/verify-boilerplate.sh
 
 ## --------------------------------------
+## Testing
+## --------------------------------------
+
+##@ test:
+
+.PHONY: test
+test: $(SETUP_ENVTEST) ## Run unit and integration tests
+	go test ./...
+
+## --------------------------------------
 ## Docker
 ## --------------------------------------
 
