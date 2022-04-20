@@ -22,6 +22,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -29,20 +30,18 @@ import (
 	certutil "k8s.io/client-go/util/cert"
 )
 
-// CertsConfig is a wrapper around certutil.Config extending it with PublicKeyAlgorithm.
-type CertsConfig struct {
-	certutil.Config
-	x509.PublicKeyAlgorithm
-}
-
 // NewCA creates new certificate and private key for the certificate authority.
-func NewCA() (*x509.Certificate, *rsa.PrivateKey, error) {
+func NewCA(config *certutil.Config) (*x509.Certificate, *rsa.PrivateKey, error) {
+	if config == nil {
+		config = &certutil.Config{}
+	}
+
 	key, err := NewPrivateKey()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	c, err := newSelfSignedCACert(key)
+	c, err := newSelfSignedCACert(config, key)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -51,7 +50,7 @@ func NewCA() (*x509.Certificate, *rsa.PrivateKey, error) {
 }
 
 // NewCertAndKey creates new certificate and key by passing the certificate authority certificate and key
-func NewCertAndKey(caCert *x509.Certificate, caKey crypto.Signer, config *CertsConfig) (*x509.Certificate, *rsa.PrivateKey, error) {
+func NewCertAndKey(caCert *x509.Certificate, caKey crypto.Signer, config *certutil.Config) (*x509.Certificate, *rsa.PrivateKey, error) {
 	key, err := NewPrivateKey()
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to create private key %v", err)
@@ -65,23 +64,34 @@ func NewCertAndKey(caCert *x509.Certificate, caKey crypto.Signer, config *CertsC
 	return cert, key, nil
 }
 
-// newSelfSignedCACert creates a CA certificate.
-func newSelfSignedCACert(key crypto.Signer) (*x509.Certificate, error) {
-	cfg := certutil.Config{
-		CommonName: "ca",
-		Organization: []string{
-			"kcp",
-		},
+func NewPubAndKey() (*rsa.PublicKey, *rsa.PrivateKey, error) {
+	key, err := NewPrivateKey()
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to create private key %v", err)
 	}
+
+	pub, ok := key.Public().(*rsa.PublicKey)
+	if !ok {
+		return nil, nil, errors.New("unable to convert key public to *rsa.PublicKey")
+	}
+
+	return pub, key, nil
+}
+
+// newSelfSignedCACert creates a CA certificate.
+func newSelfSignedCACert(config *certutil.Config, key crypto.Signer) (*x509.Certificate, error) {
+	config.CommonName = "ca"
+	config.Organization = []string{"kcp"}
 
 	now := time.Now().UTC()
 
 	tmpl := x509.Certificate{
 		SerialNumber: new(big.Int).SetInt64(0),
 		Subject: pkix.Name{
-			CommonName:   cfg.CommonName,
-			Organization: cfg.Organization,
+			CommonName:   config.CommonName,
+			Organization: config.Organization,
 		},
+		DNSNames:              config.AltNames.DNSNames,
 		NotBefore:             now.Add(time.Minute * -5),
 		NotAfter:              now.Add(time.Hour * 24 * 365 * 10), // 10 years
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -100,21 +110,21 @@ func newSelfSignedCACert(key crypto.Signer) (*x509.Certificate, error) {
 }
 
 // newSignedCert creates a signed certificate using the given CA certificate and key
-func newSignedCert(cfg *CertsConfig, key crypto.Signer, caCert *x509.Certificate, caKey crypto.Signer) (*x509.Certificate, error) {
+func newSignedCert(config *certutil.Config, key crypto.Signer, caCert *x509.Certificate, caKey crypto.Signer) (*x509.Certificate, error) {
 	now := time.Now().UTC()
 
 	certTmpl := x509.Certificate{
 		SerialNumber: new(big.Int).SetInt64(0),
 		Subject: pkix.Name{
-			CommonName:   cfg.CommonName,
-			Organization: cfg.Organization,
+			CommonName:   config.CommonName,
+			Organization: config.Organization,
 		},
-		DNSNames:              cfg.AltNames.DNSNames,
-		IPAddresses:           cfg.AltNames.IPs,
+		DNSNames:              config.AltNames.DNSNames,
+		IPAddresses:           config.AltNames.IPs,
 		NotBefore:             now.Add(time.Minute * -5),
 		NotAfter:              now.Add(time.Hour * 24 * 365 * 10), // 10 years
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           cfg.Usages,
+		ExtKeyUsage:           config.Usages,
 		BasicConstraintsValid: true,
 		MaxPathLen:            0,
 		IsCA:                  false,
