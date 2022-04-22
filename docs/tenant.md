@@ -32,17 +32,19 @@ kubectl create secret generic etcd-cert \
 
 ### 租户集群
 
-### namespace
+#### namespace
 
 ```shell
 kubectl create ns [tenant]
 ```
 
-### 拷贝etcd证书
+#### 拷贝etcd证书
 
 ```shell
+# docker exec -it host-control-plane bash
 kubectl create secret generic etcd-cert \
   -n [tenant] \
+  --type=kcp/etcd-secret \
   --from-file=ca.crt=/etc/kubernetes/pki/etcd/ca.crt \
   --from-file=apiserver-etcd-client.crt=/etc/kubernetes/pki/apiserver-etcd-client.crt \
   --from-file=apiserver-etcd-client.key=/etc/kubernetes/pki/apiserver-etcd-client.key
@@ -64,26 +66,29 @@ kubectl create secret generic etcd-cert \
 ```shell
 kubectl create secret generic server-cert \
   -n [tenant] \
-  --from-file=ca.crt=/etc/kubernetes/pki/server/ca.crt \
-  --from-file=ca.key=/etc/kubernetes/pki/server/ca.key \
-  --from-file=apiserver.crt=/etc/kubernetes/pki/server/apiserver.crt \
-  --from-file=apiserver.key=/etc/kubernetes/pki/server/apiserver.key \
-  --from-file=apiserver-kubelet-client.crt=/etc/kubernetes/pki/server/apiserver-kubelet-client.crt \
-  --from-file=apiserver-kubelet-client.key=/etc/kubernetes/pki/server/apiserver-kubelet-client.key \
-  --from-file=front-proxy-ca.crt=/etc/kubernetes/pki/server/front-proxy-ca.crt \
-  --from-file=front-proxy-ca.key=/etc/kubernetes/pki/server/front-proxy-ca.key \
-  --from-file=front-proxy-client.crt=/etc/kubernetes/pki/server/front-proxy-client.crt \
-  --from-file=front-proxy-client.key=/etc/kubernetes/pki/server/front-proxy-client.key \
-  --from-file=sa.pub=/etc/kubernetes/pki/server/sa.pub \
-  --from-file=sa.key=/etc/kubernetes/pki/server/sa.key
+  --type=kcp/kube-secret \
+  --from-file=ca.crt=examples/pki/apiserver-ca.crt \
+  --from-file=ca.key=examples/pki/apiserver-ca.key \
+  --from-file=apiserver.crt=examples/pki/apiserver.crt \
+  --from-file=apiserver.key=examples/pki/apiserver.key \
+  --from-file=apiserver-kubelet-client.crt=examples/pki/apiserver-kubelet-client.crt \
+  --from-file=apiserver-kubelet-client.key=examples/pki/apiserver-kubelet-client.key \
+  --from-file=front-proxy-ca.crt=examples/pki/front-proxy-ca.crt \
+  --from-file=front-proxy-ca.key=examples/pki/front-proxy-ca.key \
+  --from-file=front-proxy-client.crt=examples/pki/front-proxy-client.crt \
+  --from-file=front-proxy-client.key=examples/pki/front-proxy-client.key \
+  --from-file=sa.pub=examples/pki/sa.pub \
+  --from-file=sa.key=examples/pki/sa.key
 
 kubectl create secret generic kubeconfig-admin \
   -n [tenant] \
-  --from-file=admin.conf=/etc/kubernetes/kubeconfig/admin.conf
+  --type=kcp/kubeconfig \
+  --from-file=admin.conf=examples/kubeconfig/admin.conf
 
 kubectl create secret generic kubeconfig-controller-manager \
   -n [tenant] \
-  --from-file=controller-manager.conf=/etc/kubernetes/kubeconfig/controller-manager.conf
+  --type=kcp/kubeconfig \
+  --from-file=controller-manager.conf=examples/kubeconfig/controller-manager.conf
 ```
 
 #### 部署
@@ -114,40 +119,42 @@ spec:
         command:
         - kube-apiserver
         - --advertise-address=0.0.0.0
-				- --allow-privileged=true
-				- --authorization-mode=Node,RBAC
-				- --client-ca-file=/etc/kubernetes/pki/ca.crt
-				- --enable-admission-plugins=NodeRestriction
-				- --enable-bootstrap-token-auth=true
-				- --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt
-				- --etcd-certfile=/etc/kubernetes/pki/etcd/apiserver-etcd-client.crt
-				- --etcd-keyfile=/etc/kubernetes/pki/etcd/apiserver-etcd-client.key
-				- --etcd-servers=https://[etcd]:2379
-				- --etcd-prefix=/[tenant]/registry
-				- --insecure-port=0
-				- --kubelet-client-certificate=/etc/kubernetes/pki/server/apiserver-kubelet-client.crt
-				- --kubelet-client-key=/etc/kubernetes/pki/server/apiserver-kubelet-client.key
-				- --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
-				- --proxy-client-cert-file=/etc/kubernetes/pki/server/front-proxy-client.crt
-				- --proxy-client-key-file=/etc/kubernetes/pki/server/front-proxy-client.key
-				- --requestheader-allowed-names=front-proxy-client
-				- --requestheader-client-ca-file=/etc/kubernetes/pki/server/front-proxy-ca.crt
-				- --requestheader-extra-headers-prefix=X-Remote-Extra-
-				- --requestheader-group-headers=X-Remote-Group
-				- --requestheader-username-headers=X-Remote-User
-				- --secure-port=6443
-				- --service-account-key-file=/etc/kubernetes/pki/server/sa.pub
-				- --service-cluster-ip-range=10.101.0.0/16
-				- --tls-cert-file=/etc/kubernetes/pki/server/apiserver.crt
-				- --tls-private-key-file=/etc/kubernetes/pki/server/apiserver.key
-				volumeMounts:
-				- name: etcd-cert
-				  mountPath: /etcd/kubernetes/pki/etcd
-				  readOnly: true
-				- name: server-cert
-				  mountPath: /etc/kubernetes/pki/server
-				  readOnly: true
-				livenessProbe:
+        - --allow-privileged=true
+        - --authorization-mode=Node,RBAC
+        - --client-ca-file=/etc/kubernetes/pki/server/ca.crt
+        - --enable-admission-plugins=NodeRestriction
+        - --enable-bootstrap-token-auth=true
+        - --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt
+        - --etcd-certfile=/etc/kubernetes/pki/etcd/apiserver-etcd-client.crt
+        - --etcd-keyfile=/etc/kubernetes/pki/etcd/apiserver-etcd-client.key
+        - --etcd-servers=https://[etcd]:2379
+        - --etcd-prefix=/[tenant]/registry
+        - --insecure-port=0
+        - --kubelet-client-certificate=/etc/kubernetes/pki/server/apiserver-kubelet-client.crt
+        - --kubelet-client-key=/etc/kubernetes/pki/server/apiserver-kubelet-client.key
+        - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+        - --proxy-client-cert-file=/etc/kubernetes/pki/server/front-proxy-client.crt
+        - --proxy-client-key-file=/etc/kubernetes/pki/server/front-proxy-client.key
+        - --requestheader-allowed-names=front-proxy-client
+        - --requestheader-client-ca-file=/etc/kubernetes/pki/server/front-proxy-ca.crt
+        - --requestheader-extra-headers-prefix=X-Remote-Extra-
+        - --requestheader-group-headers=X-Remote-Group
+        - --requestheader-username-headers=X-Remote-User
+        - --secure-port=6443
+        - --service-account-issuer=https://kubernetes.default.svc.cluster.local
+        - --service-account-key-file=/etc/kubernetes/pki/server/sa.pub
+        - --service-account-signing-key-file=/etc/kubernetes/pki/server/sa.key
+        - --service-cluster-ip-range=10.101.0.0/16
+        - --tls-cert-file=/etc/kubernetes/pki/server/apiserver.crt
+        - --tls-private-key-file=/etc/kubernetes/pki/server/apiserver.key
+        volumeMounts:
+        - name: etcd-cert
+          mountPath: /etc/kubernetes/pki/etcd
+          readOnly: true
+        - name: server-cert
+          mountPath: /etc/kubernetes/pki/server
+          readOnly: true
+        livenessProbe:
           failureThreshold: 8
           httpGet:
             host: 127.0.0.1
@@ -187,7 +194,7 @@ spec:
         secret:
           secretName: server-cert
 ---
-apiVersion: core/v1
+apiVersion: v1
 kind: Service
 metadata:
   name: kube-apiserver
@@ -244,14 +251,14 @@ spec:
         - --root-ca-file=/etc/kubernetes/pki/ca.crt
         - --service-account-private-key-file=/etc/kubernetes/pki/sa.key
         - --use-service-account-credentials=true
-				volumeMounts:
-				- name: server-cert
-				  mountPath: /etc/kubernetes/pki
-				  readOnly: true
-				- name: kubeconfig
-				  mountPath: /etc/kubernetes/kubeconfig
-				  readOnly: true
-				livenessProbe:
+        volumeMounts:
+        - name: server-cert
+          mountPath: /etc/kubernetes/pki
+          readOnly: true
+        - name: kubeconfig
+          mountPath: /etc/kubernetes/kubeconfig
+          readOnly: true
+        livenessProbe:
           failureThreshold: 8
           httpGet:
             host: 127.0.0.1
@@ -294,7 +301,55 @@ spec:
 
 
 
+### 部署结果
+
+```shell
+$ kubectl get deploy -n tenant-1
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+kube-apiserver            1/1     1            1           12h
+kube-controller-manager   1/1     1            1           3m56s
+
+$ kubectl get svc -n tenant-1
+NAME             TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+kube-apiserver   NodePort   10.96.117.146   <none>        6443:30140/TCP   12h
+
+$ kubectl get secret -n tenant-1
+NAME                            TYPE             DATA   AGE
+etcd-cert                       kcp/etcd-secret  3      23h
+kubeconfig-admin                kcp/kubeconfig   1      10m
+kubeconfig-controller-manager   kcp/kubeconfig   1      9m46s
+server-cert                     kcp/kube-secret  12     12h
+```
+
+
+
 ### 验证
+
+部署测试容器，进入容器内执行kubectl命令验证
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubectl
+  namespace: tenant-1
+spec:
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:1.23.4
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    - "6000"
+    volumeMounts:
+    - name: kubeconfig
+      mountPath: /etc/kubernetes/kubeconfig
+      readOnly: true
+  volumes:
+  - name: kubeconfig
+    secret:
+      secretName: kubeconfig-admin
+```
 
 
 
