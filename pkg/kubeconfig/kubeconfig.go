@@ -22,12 +22,13 @@ import (
 	"fmt"
 
 	"k8s.io/client-go/tools/clientcmd/api"
+	certutil "k8s.io/client-go/util/cert"
 
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/secret"
 )
 
-// NewWithSecret creates a new Kubeconfig using the cluster name and specified endpoint.
-func NewWithSecret(clusterName, endpoint string, caCert *x509.Certificate, caKey crypto.Signer, config *secret.CertsConfig) (*api.Config, error) {
+// NewWithSecret creates a new kubeconfig using the cluster name and specified endpoint.
+func NewWithSecret(clusterName, endpoint string, caCert *x509.Certificate, caKey crypto.Signer, config *certutil.Config) (*api.Config, error) {
 	cert, key, err := secret.NewCertAndKey(caCert, caKey, config)
 	if err != nil {
 		return nil, err
@@ -59,8 +60,8 @@ func NewWithSecret(clusterName, endpoint string, caCert *x509.Certificate, caKey
 	}, nil
 }
 
-// NewWithToken creates a new Kubeconfig using the cluster name and specified endpoint.
-func NewWithToken(clusterName, endpoint string, caCert *x509.Certificate, token string, config *secret.CertsConfig) (*api.Config, error) {
+// NewWithToken creates a new kubeconfig using the cluster name and specified endpoint.
+func NewWithToken(clusterName, endpoint string, caCert *x509.Certificate, token string, config *certutil.Config) (*api.Config, error) {
 	userName := fmt.Sprintf("%s-%s", clusterName, config.CommonName)
 	contextName := fmt.Sprintf("%s@%s", userName, clusterName)
 

@@ -18,12 +18,16 @@ package secret
 
 import (
 	"crypto/x509"
-	"fmt"
+	"io/ioutil"
 	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	certutil "k8s.io/client-go/util/cert"
+)
+
+const (
+	saveFile = false
 )
 
 type testCase struct {
@@ -66,21 +70,6 @@ func TestCerts(t *testing.T) {
 						Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 					},
 				},
-				{
-					certName: "kubeconfig-admin",
-					certConfig: &certutil.Config{
-						CommonName:   "kubernetes-admin",
-						Organization: []string{"system:masters"},
-						Usages:       []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-					},
-				},
-				{
-					certName: "kubeconfig-controller-manager",
-					certConfig: &certutil.Config{
-						CommonName: "system:kube-controller-manager",
-						Usages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-					},
-				},
 			},
 		},
 		{
@@ -108,15 +97,25 @@ func TestCerts(t *testing.T) {
 		t.Logf("----- sign ca cert")
 		ca, key, err := NewCA(test.caConfig)
 		assert.NoError(t, err)
-		fmt.Printf("%s\n", EncodeCertPEM(ca))
-		fmt.Printf("%s\n", EncodePrivateKeyPEM(key))
+		t.Logf("%s", EncodeCertPEM(ca))
+		t.Logf("%s", EncodePrivateKeyPEM(key))
+
+		if saveFile {
+			ioutil.WriteFile(test.name+"-ca.crt", EncodeCertPEM(ca), 0644)
+			ioutil.WriteFile(test.name+"-ca.key", EncodePrivateKeyPEM(key), 0644)
+		}
 
 		for _, cert := range test.certCases {
 			t.Logf("----- sign certs: %s", cert.certName)
-			cert, key, err := NewCertAndKey(ca, key, cert.certConfig)
+			pub, key, err := NewCertAndKey(ca, key, cert.certConfig)
 			assert.NoError(t, err)
-			fmt.Printf("%s\n", EncodeCertPEM(cert))
-			fmt.Printf("%s\n", EncodePrivateKeyPEM(key))
+			t.Logf("%s", EncodeCertPEM(pub))
+			t.Logf("%s", EncodePrivateKeyPEM(key))
+
+			if saveFile {
+				ioutil.WriteFile(cert.certName+".crt", EncodeCertPEM(pub), 0644)
+				ioutil.WriteFile(cert.certName+".key", EncodePrivateKeyPEM(key), 0644)
+			}
 		}
 	}
 }
@@ -126,10 +125,13 @@ func TestPubAndKey(t *testing.T) {
 
 	pub, key, err := NewPubAndKey()
 	assert.NoError(t, err)
-
 	encodedPub, err := EncodePublicKeyPEM(pub)
 	assert.NoError(t, err)
+	t.Logf("%s", encodedPub)
+	t.Logf("%s", EncodePrivateKeyPEM(key))
 
-	fmt.Printf("%s\n", encodedPub)
-	fmt.Printf("%s\n", EncodePrivateKeyPEM(key))
+	if saveFile {
+		ioutil.WriteFile("sa.pub", encodedPub, 0644)
+		ioutil.WriteFile("sa.key", EncodePrivateKeyPEM(key), 0644)
+	}
 }
