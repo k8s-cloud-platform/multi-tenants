@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: multi-tenants-manager
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+- apiGroups:
+  - tenancy.kcp.io
+  resources:
+  - tenants
+  - tenants/status
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
