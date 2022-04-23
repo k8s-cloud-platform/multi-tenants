@@ -30,6 +30,9 @@ import (
 type Tenant struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   TenantSpec   `json:"spec,omitempty"`
+	Status TenantStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -39,4 +42,34 @@ type TenantList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Tenant `json:"items"`
+}
+
+type TenantSpec struct {
+}
+
+type TenantStatus struct {
+	// Phase represents the current phase of Tenant.
+	// E.g. Pending, Running, Terminating, Failed etc.
+	// +optional
+	Phase string `json:"phase,omitempty"`
+
+	// Conditions defines current service state of Tenant.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+func (t *TenantStatus) IsPhase(p TenantPhase) bool {
+	return t.Phase == string(p)
+}
+
+func (t *TenantStatus) SetPhase(p TenantPhase) {
+	t.Phase = string(p)
+}
+
+func (t *Tenant) GetConditions() []metav1.Condition {
+	return t.Status.Conditions
+}
+
+func (t *Tenant) SetConditions(conditions []metav1.Condition) {
+	t.Status.Conditions = conditions
 }

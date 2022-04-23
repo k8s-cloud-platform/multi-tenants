@@ -28,6 +28,7 @@ import (
 )
 
 type Options struct {
+	EtcdServers           string
 	EtcdSecret            string
 	DefaultTenants        string
 	ConcurrencyTenantSync int
@@ -50,10 +51,12 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 	utilfeature.DefaultMutableFeatureGate.AddFlag(flags)
 	o.Log.AddFlags(flags)
 
+	flags.StringVar(&o.EtcdServers, "etcd-servers", "",
+		"Etcd servers, used for tenant apiserver connect to host etcd clusters, use ',' to separate.")
 	flags.StringVar(&o.EtcdSecret, "etcd-secret", "",
 		"Reference of etcd secret, use [namespace]/[name] or [name](use default namespace).")
-	flags.StringVar(&o.DefaultTenants, "default-tenants", "default",
-		"Default tenants to when startup, use ',' to separate, default to 'default'.")
+	flags.StringVar(&o.DefaultTenants, "default-tenants", "",
+		"Default tenants to when startup, use ',' to separate, default to ''.")
 
 	flags.IntVar(&o.ConcurrencyTenantSync, "concurrency-tenant-sync", 10,
 		"Concurrency of tenant controllers to sync.")
@@ -87,6 +90,9 @@ func (o *Options) Validate() field.ErrorList {
 		errs = append(errs, field.Required(newPath.Child("LeaderElection.RetryPeriod.Duration"), "must bigger than 0"))
 	}
 
+	if o.EtcdServers == "" {
+		errs = append(errs, field.Required(newPath.Child("EtcdServers"), "must not empty"))
+	}
 	if o.EtcdSecret == "" {
 		errs = append(errs, field.Required(newPath.Child("EtcdSecret"), "must not empty"))
 	}
