@@ -33,7 +33,6 @@ import (
 	"github.com/k8s-cloud-platform/multi-tenants/cmd/controller-manager/app/options"
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/apis/tenancy/v1alpha1"
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/controllers"
-	// +kubebuilder:scaffold:imports
 )
 
 var (
@@ -41,7 +40,6 @@ var (
 )
 
 func init() {
-	// +kubebuilder:scaffold:scheme
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 }
 
@@ -67,8 +65,7 @@ func NewControllerManagerCommand() *cobra.Command {
 				return errs.ToAggregate()
 			}
 
-			ctx := ctrl.SetupSignalHandler()
-			return run(ctx, opts)
+			return run(ctrl.SetupSignalHandler(), opts)
 		},
 	}
 
@@ -81,8 +78,15 @@ func NewControllerManagerCommand() *cobra.Command {
 
 func run(ctx context.Context, opts *options.Options) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:         scheme,
-		LeaderElection: false,
+		Scheme:                        scheme,
+		LeaderElection:                opts.LeaderElection.LeaderElect,
+		LeaderElectionReleaseOnCancel: true,
+		LeaderElectionResourceLock:    opts.LeaderElection.ResourceLock,
+		LeaderElectionNamespace:       opts.LeaderElection.ResourceNamespace,
+		LeaderElectionID:              opts.LeaderElection.ResourceName,
+		LeaseDuration:                 &opts.LeaderElection.LeaseDuration.Duration,
+		RenewDeadline:                 &opts.LeaderElection.RenewDeadline.Duration,
+		RetryPeriod:                   &opts.LeaderElection.RetryPeriod.Duration,
 	})
 	if err != nil {
 		klog.ErrorS(err, "unable to start controller-manager")
@@ -92,13 +96,11 @@ func run(ctx context.Context, opts *options.Options) error {
 	if err = (&controllers.TenantController{
 		Client: mgr.GetClient(),
 	}).SetupWithManager(mgr, controller.Options{
-		MaxConcurrentReconciles: 1,
+		MaxConcurrentReconciles: opts.ConcurrencyTenantSync,
 	}); err != nil {
 		klog.ErrorS(err, "unable to create tenant controller")
 		os.Exit(1)
 	}
-
-	// +kubebuilder:scaffold:builder
 
 	klog.Info("starting controller-manager")
 	if err := mgr.Start(ctx); err != nil {
