@@ -43,14 +43,14 @@ CONVERSION_GEN := $(abspath $(TOOLS_BIN_DIR)/conversion-gen)
 BOILERPLATE_FILE := hack/boilerplate/boilerplate.generatego.txt
 
 # Define Docker related variables. Releases should modify and double check these vars.
-REGISTRY ?= k8s-cloud-platform/multi-tenants
+REGISTRY ?= k8scloudplatform
 
 #
 # Images.
 #
 # syncer
-IMAGE_NAME_SYNCER ?= syncer
-CONTROLLER_IMG_SYNCER ?= $(REGISTRY)/$(IMAGE_NAME_SYNCER)
+IMAGE_NAME_CONTROLLER_MANAGER ?= multi-tenants-controller-manager
+CONTROLLER_IMG_CONTROLLER_MANAGER ?= $(REGISTRY)/$(IMAGE_NAME_CONTROLLER_MANAGER)
 
 # release
 RELEASE_TAG ?= $(shell git describe --tags --abbrev=0)
@@ -127,24 +127,24 @@ test: $(SETUP_ENVTEST) ## Run unit and integration tests
 
 .PHONY: docker-build
 docker-build: ## Build image
-	$(MAKE) docker-build-syncer
+	$(MAKE) docker-build-controller-manager
 
 .PHONY: docker-push
 docker-push: ## Push image
-	$(MAKE) docker-push-syncer
+	$(MAKE) docker-push-controller-manager
 
-.PHONY: docker-build-syncer
-docker-build-syncer: ## Build image for syncer
-	docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg package=cmd/syncer/main.go . -t $(CONTROLLER_IMG_SYNCER):$(RELEASE_TAG)
+.PHONY: docker-build-controller-manager
+docker-build-controller-manager: ## Build image for controller-manager
+	docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg package=cmd/controller-manager/main.go . -t $(CONTROLLER_IMG_CONTROLLER_MANAGER):$(RELEASE_TAG)
 
-.PHONY: docker-push-syncer
-docker-push-syncer: ## Push image for syncer
-	docker push $(CONTROLLER_IMG_SYNCER):$(RELEASE_TAG)
+.PHONY: docker-push-controller-manager
+docker-push-controller-manager: ## Push image for controller-manager
+	docker push $(CONTROLLER_IMG_CONTROLLER_MANAGER):$(RELEASE_TAG)
 
 .PHONY: set-manifest
 set-manifest: ## Update manifest image and pull policy
-	$(MAKE) set-manifest-image MANIFEST_IMG=$(CONTROLLER_IMG_SYNCER) MANIFEST_TAG=$(RELEASE_TAG) TARGET_RESOURCE="./deploy/base/syncer.yaml"
-	$(MAKE) set-manifest-pull-policy PULL_POLICY=IfNotPresent TARGET_RESOURCE="./deploy/base/syncer.yaml"
+	$(MAKE) set-manifest-image MANIFEST_IMG=$(CONTROLLER_IMG_CONTROLLER_MANAGER) MANIFEST_TAG=$(RELEASE_TAG) TARGET_RESOURCE="./deploy/base/controller_manager.yaml"
+	$(MAKE) set-manifest-pull-policy PULL_POLICY=IfNotPresent TARGET_RESOURCE="./deploy/base/controller_manager.yaml"
 
 .PHONY: set-manifest-pull-policy
 set-manifest-pull-policy: ## Update manifest pull policy
