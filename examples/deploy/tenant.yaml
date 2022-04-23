@@ -1,4 +1,4 @@
 apiVersion: tenancy.kcp.io/v1alpha1
 kind: Tenant
 metadata:
-  name: default-1
+  name: default
