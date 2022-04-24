@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -34,7 +35,7 @@ import (
 
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/apis/tenancy/v1alpha1"
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/conditions"
-	"github.com/k8s-cloud-platform/multi-tenants/pkg/patcher"
+	util "github.com/k8s-cloud-platform/multi-tenants/pkg/controllerutil"
 )
 
 const (
@@ -71,7 +72,7 @@ func (c *TenantController) Reconcile(ctx context.Context, req reconcile.Request)
 	defer func() {
 		c.reconcilePhase(tenant)
 		runtimeObj := tenant.DeepCopy()
-		_, err := patcher.Patch(ctx, c.Client, runtimeObj, func() error {
+		_, err := util.PatchIfExists(ctx, c.Client, runtimeObj, func() error {
 			runtimeObj.ObjectMeta.Finalizers = tenant.ObjectMeta.Finalizers
 			runtimeObj.ObjectMeta.OwnerReferences = tenant.ObjectMeta.OwnerReferences
 			runtimeObj.Status.Phase = tenant.Status.Phase
@@ -118,32 +119,28 @@ func (c *TenantController) reconcileNormal(ctx context.Context, tenant *v1alpha1
 			Name: tenant.Name,
 		},
 	}
-	if err := c.Client.Get(ctx, client.ObjectKeyFromObject(ns), ns); err != nil {
-		if !apierrors.IsNotFound(err) {
-			klog.ErrorS(err, "unable to get namespace for tenant")
-			return reconcile.Result{}, err
-		}
-		if err := c.Client.Create(ctx, ns); err != nil {
-			klog.ErrorS(err, "unable to create namespace for tenant")
-			return reconcile.Result{}, err
-		}
+	if _, err := util.CreateIfNotExists(ctx, c.Client, ns, func() error {
+		return nil
+	}); err != nil {
+		klog.ErrorS(err, "unable to create or update namespace")
+		return reconcile.Result{}, err
 	}
 
 	if !conditions.Has(tenant, v1alpha1.TenantConditionProvisioned) ||
 		conditions.IsFalse(tenant, v1alpha1.TenantConditionProvisioned) {
 		// handle for provisioning
-		phases := map[string]func(context.Context, *v1alpha1.Tenant) error{
-			"secret":            c.reconcileSecret,
-			"kubeconfig":        c.reconcileKubeConfig,
-			"apiserver":         c.reconcileAPIServer,
-			"controllermanager": c.reconcileControllerManager,
+		phases := []func(context.Context, *v1alpha1.Tenant) error{
+			c.reconcileSecret,
+			c.reconcileKubeConfig,
+			c.reconcileAPIServer,
+			c.reconcileControllerManager,
 		}
 
-		for phase, fun := range phases {
+		for _, fun := range phases {
 			err := fun(ctx, tenant)
 			if err != nil {
-				klog.ErrorS(err, "unable to handle for phase", "phase", phase)
-				conditions.MarkFalse(tenant, v1alpha1.TenantConditionProvisioned, phase+"Failed", "failed to handle "+phase)
+				klog.ErrorS(err, "unable to handle for phase")
+				conditions.MarkFalse(tenant, v1alpha1.TenantConditionProvisioned, "Failed", "failed to handle phase")
 				return reconcile.Result{}, err
 			}
 		}
@@ -153,13 +150,11 @@ func (c *TenantController) reconcileNormal(ctx context.Context, tenant *v1alpha1
 
 	// check if ready
 	checkDeploy := func(namespace, name string) (reconcile.Result, error) {
-		deploy := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: namespace,
-				Name:      name,
-			},
-		}
-		if err := c.Client.Get(ctx, client.ObjectKeyFromObject(deploy), deploy); err != nil {
+		deploy := &appsv1.Deployment{}
+		if err := c.Client.Get(ctx, types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		}, deploy); err != nil {
 			klog.ErrorS(err, "unable to get deployment", "namespace", namespace, "name", name)
 			return reconcile.Result{}, err
 		}

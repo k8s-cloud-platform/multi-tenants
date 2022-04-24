@@ -14,26 +14,73 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package patcher
+package controllerutil
 
 import (
 	"context"
 	"fmt"
 	"reflect"
 
+	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// Patch patches the given object in the Kubernetes cluster.
-// The object's desired state must be reconciled with the before state inside the passed in callback MutateFn.
-//
-// It returns the executed operation and an error.
-func Patch(ctx context.Context, c client.Client, obj client.Object, f controllerutil.MutateFn) (controllerutil.OperationResult, error) {
+// CreateIfNotExists creates the given object in the Kubernetes cluster.
+func CreateIfNotExists(ctx context.Context, c client.Client, obj client.Object, f controllerutil.MutateFn) (controllerutil.OperationResult, error) {
 	key := client.ObjectKeyFromObject(obj)
 	if err := c.Get(ctx, key, obj); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return controllerutil.OperationResultNone, err
+		}
+		if err := mutate(f, key, obj); err != nil {
+			return controllerutil.OperationResultNone, err
+		}
+		if err := c.Create(ctx, obj); err != nil {
+			return controllerutil.OperationResultNone, err
+		}
+		return controllerutil.OperationResultCreated, nil
+	}
+	return controllerutil.OperationResultNone, nil
+}
+
+// UpdateIfExists updates the given object in the Kubernetes cluster if exists.
+// The object's desired state must be reconciled with the existing state inside the passed in callback MutateFn.
+func UpdateIfExists(ctx context.Context, c client.Client, obj client.Object, f controllerutil.MutateFn) (controllerutil.OperationResult, error) {
+	key := client.ObjectKeyFromObject(obj)
+	if err := c.Get(ctx, key, obj); err != nil {
+		if apierrors.IsNotFound(err) {
+			return controllerutil.OperationResultNone, nil
+		}
+		return controllerutil.OperationResultNone, err
+	}
+
+	existing := obj.DeepCopyObject() //nolint
+	if err := mutate(f, key, obj); err != nil {
+		return controllerutil.OperationResultNone, err
+	}
+
+	if equality.Semantic.DeepEqual(existing, obj) {
+		return controllerutil.OperationResultNone, nil
+	}
+
+	if err := c.Update(ctx, obj); err != nil {
+		return controllerutil.OperationResultNone, err
+	}
+	return controllerutil.OperationResultUpdated, nil
+}
+
+// PatchIfExists patches the given object in the Kubernetes cluster if exists.
+// The object's desired state must be reconciled with the before state inside the passed in callback MutateFn.
+func PatchIfExists(ctx context.Context, c client.Client, obj client.Object, f controllerutil.MutateFn) (controllerutil.OperationResult, error) {
+	key := client.ObjectKeyFromObject(obj)
+	if err := c.Get(ctx, key, obj); err != nil {
+		if apierrors.IsNotFound(err) {
+			return controllerutil.OperationResultNone, nil
+		}
 		return controllerutil.OperationResultNone, err
 	}
 

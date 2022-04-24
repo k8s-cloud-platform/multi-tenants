@@ -120,6 +120,10 @@ func run(ctx context.Context, opts *options.Options) error {
 		Namespace: namespace,
 		Name:      name,
 	}, etcdSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.ErrorS(err, "secret[etcd-secret] not exists")
+			return err
+		}
 		klog.ErrorS(err, "unable to get secret for etcd-secret")
 		return err
 	}
@@ -151,12 +155,15 @@ func run(ctx context.Context, opts *options.Options) error {
 }
 
 func preStart(ctx context.Context, mgr manager.Manager, opts *options.Options) error {
+	if opts.DefaultTenants == "" {
+		klog.V(1).Info("default-tenants is empty, skip")
+		return nil
+	}
+
 	// handle for default tenants
 	for _, tenant := range strings.Split(opts.DefaultTenants, ",") {
-		if tenant == "" {
-			continue
-		}
 		klog.InfoS("init default tenant", "name", tenant)
+
 		tenantObj := &v1alpha1.Tenant{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: tenant,
@@ -164,6 +171,7 @@ func preStart(ctx context.Context, mgr manager.Manager, opts *options.Options) e
 		}
 		if err := mgr.GetAPIReader().Get(ctx, client.ObjectKeyFromObject(tenantObj), tenantObj); err != nil {
 			if !apierrors.IsNotFound(err) {
+				klog.ErrorS(err, "unable to get tenant", "name", tenant)
 				return err
 			}
 		} else {
@@ -171,6 +179,7 @@ func preStart(ctx context.Context, mgr manager.Manager, opts *options.Options) e
 			continue
 		}
 		if err := mgr.GetClient().Create(ctx, tenantObj); err != nil {
+			klog.ErrorS(err, "unable to create tenant", "name", tenant)
 			return err
 		}
 		klog.InfoS("success to create tenant", "name", tenant)
