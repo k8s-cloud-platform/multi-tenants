@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-tenants-manager
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: multi-tenants-manager
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: multi-tenants-manager
+    spec:
+      containers:
+        - name: manager
+          image: k8scloudplatform/multi-tenants-manager:latest
+          imagePullPolicy: Always
+      serviceAccountName: multi-tenants-manager

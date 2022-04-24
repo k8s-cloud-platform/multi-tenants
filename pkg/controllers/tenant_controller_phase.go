@@ -27,11 +27,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/clientcmd"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/apis/tenancy/v1alpha1"
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/kubeconfig"
@@ -66,8 +68,13 @@ func (c *TenantController) reconcilePhase(tenant *v1alpha1.Tenant) {
 
 func (c *TenantController) reconcileSecret(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	// check server cert
-	_, err := c.ClientSet.CoreV1().Secrets(tenant.Name).Get(ctx, "server-cert", metav1.GetOptions{})
-	if err != nil {
+	serverCertSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: tenant.Name,
+			Name:      "server-cert",
+		},
+	}
+	if err := c.Client.Get(ctx, client.ObjectKeyFromObject(serverCertSecret), serverCertSecret); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.Error(err, "unable to get secret object")
 			return err
@@ -144,10 +151,28 @@ func (c *TenantController) reconcileSecret(ctx context.Context, tenant *v1alpha1
 		return err
 	}
 
-	obj := &corev1.Secret{
+	// update addon secret num if modified
+	result := make(map[string][]byte, len(c.EtcdSecret)+12)
+	for k, v := range c.EtcdSecret {
+		result[k] = v
+	}
+	result["ca.crt"] = secret.EncodeCertPEM(serverCA)
+	result["ca.key"] = secret.EncodePrivateKeyPEM(serverCAKey)
+	result["apiserver.crt"] = secret.EncodeCertPEM(serverCert)
+	result["apiserver.key"] = secret.EncodePrivateKeyPEM(serverKey)
+	result["apiserver-kubelet-client.crt"] = secret.EncodeCertPEM(kubeletCert)
+	result["apiserver-kubelet-client.key"] = secret.EncodePrivateKeyPEM(kubeletKey)
+	result["front-proxy-ca.crt"] = secret.EncodeCertPEM(frontCA)
+	result["front-proxy-ca.key"] = secret.EncodePrivateKeyPEM(frontCAKey)
+	result["front-proxy-client.crt"] = secret.EncodeCertPEM(frontCert)
+	result["front-proxy-client.key"] = secret.EncodePrivateKeyPEM(frontKey)
+	result["sa.pub"] = encodedPub
+	result["sa.key"] = secret.EncodePrivateKeyPEM(pubKey)
+
+	serverCertSecret = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "server-cert",
 			Namespace: tenant.Name,
+			Name:      "server-cert",
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion: tenant.APIVersion,
@@ -157,29 +182,10 @@ func (c *TenantController) reconcileSecret(ctx context.Context, tenant *v1alpha1
 				},
 			},
 		},
-		Type: corev1.SecretType("kcp/kube-secret"),
-		Data: func() map[string][]byte {
-			// update addon secret num if modified
-			result := make(map[string][]byte, len(c.EtcdSecret)+12)
-			for k, v := range c.EtcdSecret {
-				result[k] = v
-			}
-			result["ca.crt"] = secret.EncodeCertPEM(serverCA)
-			result["ca.key"] = secret.EncodePrivateKeyPEM(serverCAKey)
-			result["apiserver.crt"] = secret.EncodeCertPEM(serverCert)
-			result["apiserver.key"] = secret.EncodePrivateKeyPEM(serverKey)
-			result["apiserver-kubelet-client.crt"] = secret.EncodeCertPEM(kubeletCert)
-			result["apiserver-kubelet-client.key"] = secret.EncodePrivateKeyPEM(kubeletKey)
-			result["front-proxy-ca.crt"] = secret.EncodeCertPEM(frontCA)
-			result["front-proxy-ca.key"] = secret.EncodePrivateKeyPEM(frontCAKey)
-			result["front-proxy-client.crt"] = secret.EncodeCertPEM(frontCert)
-			result["front-proxy-client.key"] = secret.EncodePrivateKeyPEM(frontKey)
-			result["sa.pub"] = encodedPub
-			result["sa.key"] = secret.EncodePrivateKeyPEM(pubKey)
-			return result
-		}(),
+		Type: "kcp/kube-secret",
+		Data: result,
 	}
-	if _, err := c.ClientSet.CoreV1().Secrets(obj.Namespace).Create(ctx, obj, metav1.CreateOptions{}); err != nil {
+	if err := c.Client.Create(ctx, serverCertSecret); err != nil {
 		klog.Error(err, "unable to create secret")
 		return err
 	}
@@ -189,7 +195,13 @@ func (c *TenantController) reconcileSecret(ctx context.Context, tenant *v1alpha1
 
 func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	generateAdmin := true
-	if _, err := c.ClientSet.CoreV1().Secrets(tenant.Name).Get(ctx, "kubeconfig-admin", metav1.GetOptions{}); err == nil {
+	adminSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: tenant.Name,
+			Name:      "kubeconfig-admin",
+		},
+	}
+	if err := c.Client.Get(ctx, client.ObjectKeyFromObject(adminSecret), adminSecret); err == nil {
 		klog.V(2).Info("secret[kubeconfig-admin] already exists, skip kubeconfig[kubeconfig-admin] phase")
 		generateAdmin = false
 	} else if !apierrors.IsNotFound(err) {
@@ -198,7 +210,13 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 	}
 
 	generateCM := true
-	if _, err := c.ClientSet.CoreV1().Secrets(tenant.Name).Get(ctx, "kubeconfig-controller-manager", metav1.GetOptions{}); err == nil {
+	cmSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: tenant.Name,
+			Name:      "kubeconfig-controller-manager",
+		},
+	}
+	if err := c.Client.Get(ctx, client.ObjectKeyFromObject(cmSecret), cmSecret); err == nil {
 		klog.V(2).Info("secret[server-cert] already exists, skip kubeconfig[kubeconfig-controller-manager] phase")
 		generateCM = false
 	} else if !apierrors.IsNotFound(err) {
@@ -211,13 +229,18 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 		return nil
 	}
 
-	serverCert, err := c.ClientSet.CoreV1().Secrets(tenant.Name).Get(ctx, "server-cert", metav1.GetOptions{})
-	if err != nil {
+	serverCertSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: tenant.Name,
+			Name:      "server-cert",
+		},
+	}
+	if err := c.Client.Get(ctx, client.ObjectKeyFromObject(serverCertSecret), serverCertSecret); err != nil {
 		klog.ErrorS(err, "unable to get secret for server-cert")
 		return err
 	}
 
-	ca, ok := serverCert.Data["ca.crt"]
+	ca, ok := serverCertSecret.Data["ca.crt"]
 	if !ok {
 		klog.Error("ca.crt is empty in server-cert secret")
 		return errors.New("empty ca.crt")
@@ -228,7 +251,7 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 		return err
 	}
 
-	key, ok := serverCert.Data["ca.key"]
+	key, ok := serverCertSecret.Data["ca.key"]
 	if !ok {
 		klog.Error("ca.key is empty in server-cert secret")
 		return errors.New("empty ca.key")
@@ -262,7 +285,7 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 			return err
 		}
 
-		obj := &corev1.Secret{
+		adminSecret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kubeconfig-admin",
 				Namespace: tenant.Name,
@@ -275,12 +298,12 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 					},
 				},
 			},
-			Type: corev1.SecretType("kcp/kubeconfig"),
+			Type: "kcp/kubeconfig",
 			Data: map[string][]byte{
 				"admin.conf": adminConfig,
 			},
 		}
-		if _, err := c.ClientSet.CoreV1().Secrets(obj.Namespace).Create(ctx, obj, metav1.CreateOptions{}); err != nil {
+		if err := c.Client.Create(ctx, adminSecret); err != nil {
 			klog.Error(err, "unable to create secret")
 			return err
 		}
@@ -309,7 +332,7 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 			return err
 		}
 
-		obj := &corev1.Secret{
+		cmSecret = &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kubeconfig-controller-manager",
 				Namespace: tenant.Name,
@@ -322,12 +345,12 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 					},
 				},
 			},
-			Type: corev1.SecretType("kcp/kubeconfig"),
+			Type: "kcp/kubeconfig",
 			Data: map[string][]byte{
 				"controller-manager.conf": adminConfig,
 			},
 		}
-		if _, err := c.ClientSet.CoreV1().Secrets(obj.Namespace).Create(ctx, obj, metav1.CreateOptions{}); err != nil {
+		if err := c.Client.Create(ctx, cmSecret); err != nil {
 			klog.Error(err, "unable to create secret")
 			return err
 		}
@@ -338,7 +361,8 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 
 func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	generateDeploy := true
-	if _, err := c.ClientSet.AppsV1().Deployments(tenant.Name).Get(ctx, "kube-apiserver", metav1.GetOptions{}); err == nil {
+	deployment := &appsv1.Deployment{}
+	if err := c.Client.Get(ctx, types.NamespacedName{Namespace: tenant.Name, Name: "kube-apiserver"}, deployment); err == nil {
 		// already exists
 		klog.V(2).Info("deployment[kube-apiserver] already exists for tenant, skip")
 		generateDeploy = false
@@ -348,7 +372,8 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 	}
 
 	generateSvc := true
-	if _, err := c.ClientSet.CoreV1().Services(tenant.Name).Get(ctx, "kube-apiserver", metav1.GetOptions{}); err == nil {
+	apiserverService := &corev1.Service{}
+	if err := c.Client.Get(ctx, types.NamespacedName{Namespace: tenant.Name, Name: "kube-apiserver"}, apiserverService); err == nil {
 		// already exists
 		klog.V(2).Info("service[kube-apiserver] already exists for tenant, skip")
 		generateSvc = false
@@ -359,7 +384,7 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 
 	// apiserver deployment
 	if generateDeploy {
-		deployment := &appsv1.Deployment{
+		deployment = &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kube-apiserver",
 				Namespace: tenant.Name,
@@ -492,7 +517,7 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 				},
 			},
 		}
-		if _, err := c.ClientSet.AppsV1().Deployments(deployment.Namespace).Create(ctx, deployment, metav1.CreateOptions{}); err != nil {
+		if err := c.Client.Create(ctx, deployment); err != nil {
 			klog.ErrorS(err, "unable to create deployment for apiserver")
 			return err
 		}
@@ -500,7 +525,7 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 
 	// apiserver service
 	if generateSvc {
-		service := &corev1.Service{
+		apiserverService = &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kube-apiserver",
 				Namespace: tenant.Name,
@@ -528,7 +553,7 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 				},
 			},
 		}
-		if _, err := c.ClientSet.CoreV1().Services(service.Namespace).Create(ctx, service, metav1.CreateOptions{}); err != nil {
+		if err := c.Client.Create(ctx, apiserverService); err != nil {
 			klog.ErrorS(err, "unable to create service for apiserver")
 			return err
 		}
@@ -539,7 +564,8 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 
 func (c *TenantController) reconcileControllerManager(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	generateDeploy := true
-	if _, err := c.ClientSet.AppsV1().Deployments(tenant.Name).Get(ctx, "kube-controller-manager", metav1.GetOptions{}); err == nil {
+	deployment := &appsv1.Deployment{}
+	if err := c.Client.Get(ctx, types.NamespacedName{Namespace: tenant.Name, Name: "kube-controller-manager"}, deployment); err == nil {
 		// already exists
 		klog.V(2).Info("deployment[kube-controller-manager] already exists for tenant, skip")
 		generateDeploy = false
@@ -549,7 +575,7 @@ func (c *TenantController) reconcileControllerManager(ctx context.Context, tenan
 	}
 
 	if generateDeploy {
-		deployment := &appsv1.Deployment{
+		deployment = &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "kube-controller-manager",
 				Namespace: tenant.Name,
@@ -682,7 +708,7 @@ func (c *TenantController) reconcileControllerManager(ctx context.Context, tenan
 				},
 			},
 		}
-		if _, err := c.ClientSet.AppsV1().Deployments(deployment.Namespace).Create(ctx, deployment, metav1.CreateOptions{}); err != nil {
+		if err := c.Client.Create(ctx, deployment); err != nil {
 			klog.ErrorS(err, "unable to create deployment for controller-manager")
 			return err
 		}

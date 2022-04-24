@@ -65,7 +65,7 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 		"Enable leader elect.")
 	flags.StringVar(&o.LeaderElection.ResourceNamespace, "leader-elect-resource-namespace", "default",
 		"Namespace of leader elect resource.")
-	flags.StringVar(&o.LeaderElection.ResourceName, "leader-elect-resource-name", "controller-manager.multi-tenants.kcp.io",
+	flags.StringVar(&o.LeaderElection.ResourceName, "leader-elect-resource-name", "manager.multi-tenants.kcp.io",
 		"Name of leader elect resource.")
 	flags.DurationVar(&o.LeaderElection.LeaseDuration.Duration, "leader-elect-lease-duration", 15*time.Second,
 		"Duration of leader elect lease.")

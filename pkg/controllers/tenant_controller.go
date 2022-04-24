@@ -20,11 +20,11 @@ import (
 	"context"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,8 +45,6 @@ type TenantController struct {
 	EtcdSecret  map[string][]byte
 	EtcdServers string
 	Client      client.Client
-	Reader      client.Reader
-	ClientSet   *kubernetes.Clientset
 }
 
 var _ reconcile.Reconciler = &TenantController{}
@@ -115,15 +113,17 @@ func (c *TenantController) reconcileNormal(ctx context.Context, tenant *v1alpha1
 	klog.V(1).InfoS("reconcile for Tenant normal", "name", tenant.Name)
 
 	// ensure namespace
-	if _, err := c.ClientSet.CoreV1().Namespaces().Get(ctx, tenant.Name, metav1.GetOptions{}); err != nil {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: tenant.Name,
+		},
+	}
+	if err := c.Client.Get(ctx, client.ObjectKeyFromObject(ns), ns); err != nil {
 		if !apierrors.IsNotFound(err) {
 			klog.ErrorS(err, "unable to get namespace for tenant")
 			return reconcile.Result{}, err
 		}
-		if _, err := c.ClientSet.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tenant.Name,
-			}}, metav1.CreateOptions{}); err != nil {
+		if err := c.Client.Create(ctx, ns); err != nil {
 			klog.ErrorS(err, "unable to create namespace for tenant")
 			return reconcile.Result{}, err
 		}
@@ -153,8 +153,13 @@ func (c *TenantController) reconcileNormal(ctx context.Context, tenant *v1alpha1
 
 	// check if ready
 	checkDeploy := func(namespace, name string) (reconcile.Result, error) {
-		deploy, err := c.ClientSet.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
-		if err != nil {
+		deploy := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+				Name:      name,
+			},
+		}
+		if err := c.Client.Get(ctx, client.ObjectKeyFromObject(deploy), deploy); err != nil {
 			klog.ErrorS(err, "unable to get deployment", "namespace", namespace, "name", name)
 			return reconcile.Result{}, err
 		}

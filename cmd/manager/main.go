@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/component-base/cli"
 
-	"github.com/k8s-cloud-platform/multi-tenants/cmd/controller-manager/app"
+	"github.com/k8s-cloud-platform/multi-tenants/cmd/manager/app"
 )
 
 func main() {

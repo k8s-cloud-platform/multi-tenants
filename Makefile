@@ -49,8 +49,8 @@ REGISTRY ?= k8scloudplatform
 # Images.
 #
 # syncer
-IMAGE_NAME_CONTROLLER_MANAGER ?= multi-tenants-controller-manager
-CONTROLLER_IMG_CONTROLLER_MANAGER ?= $(REGISTRY)/$(IMAGE_NAME_CONTROLLER_MANAGER)
+IMAGE_NAME_MANAGER ?= multi-tenants-manager
+CONTROLLER_IMG_MANAGER ?= $(REGISTRY)/$(IMAGE_NAME_MANAGER)
 
 # release
 RELEASE_TAG ?= $(shell git describe --tags --abbrev=0)
@@ -65,24 +65,24 @@ help:  # Display this help
 ##@ generate:
 
 .PHONY: generate
-generate: ## Run all generate-xxx targets
+generate: ## Run all generate targets.
 	$(MAKE) generate-go-deepcopy generate-go-convertion generate-manifests
 
 .PHONY: generate-go-deepcopy
-generate-go-deepcopy: $(CONTROLLER_GEN) ## Generate deepcopy code
+generate-go-deepcopy: $(CONTROLLER_GEN) ## Generate deepcopy code.
 	$(CONTROLLER_GEN) \
 		object:headerFile=$(BOILERPLATE_FILE) \
 		paths=./...
 
 .PHONY: generate-go-convertion
-generate-go-convertion: $(CONVERSION_GEN) ## Generate convertion code
+generate-go-convertion: $(CONVERSION_GEN) ## Generate convertion code.
 	$(CONVERSION_GEN) \
 		--go-header-file=$(BOILERPLATE_FILE) \
 		--input-dirs=github.com/k8s-cloud-platform/multi-tenants/pkg/apis \
 	  	--output-file-base=zz_generated.conversion
 
 .PHONY: generate-manifests
-generate-manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc
+generate-manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc.
 	$(CONTROLLER_GEN) \
 		paths=./... \
 		crd:crdVersions=v1 \
@@ -97,16 +97,16 @@ generate-manifests: $(CONTROLLER_GEN) ## Generate manifests e.g. CRD, RBAC etc
 ##@ lint and verify:
 
 .PHONY: modules
-modules: ## Run go mod tidy to ensure modules are up to date
+modules: ## Run go mod tidy to ensure modules are up to date.
 	go mod tidy
 	cd $(TOOLS_DIR); go mod tidy
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) ## Lint the codebase
+lint: $(GOLANGCI_LINT) ## Lint the codebase.
 	GO111MODULE=off $(GOLANGCI_LINT) run -v
 
 .PHONY: verify-boilerplate
-verify-boilerplate: ## Verify boilerplate text exists in each file
+verify-boilerplate: ## Verify boilerplate text exists in each file.
 	hack/verify-boilerplate.sh
 
 ## --------------------------------------
@@ -116,7 +116,7 @@ verify-boilerplate: ## Verify boilerplate text exists in each file
 ##@ test:
 
 .PHONY: test
-test: $(SETUP_ENVTEST) ## Run unit and integration tests
+test: $(SETUP_ENVTEST) ## Run unit and integration tests.
 	go test ./...
 
 ## --------------------------------------
@@ -126,32 +126,24 @@ test: $(SETUP_ENVTEST) ## Run unit and integration tests
 ##@ docker:
 
 .PHONY: docker-build
-docker-build: ## Build image
-	$(MAKE) docker-build-controller-manager
+docker-build: ## Build image.
+	docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg package=cmd/controller-manager/main.go . -t $(CONTROLLER_IMG_MANAGER):$(RELEASE_TAG)
 
 .PHONY: docker-push
-docker-push: ## Push image
-	$(MAKE) docker-push-controller-manager
-
-.PHONY: docker-build-controller-manager
-docker-build-controller-manager: ## Build image for controller-manager
-	docker build --build-arg builder_image=$(GO_CONTAINER_IMAGE) --build-arg package=cmd/controller-manager/main.go . -t $(CONTROLLER_IMG_CONTROLLER_MANAGER):$(RELEASE_TAG)
-
-.PHONY: docker-push-controller-manager
-docker-push-controller-manager: ## Push image for controller-manager
-	docker push $(CONTROLLER_IMG_CONTROLLER_MANAGER):$(RELEASE_TAG)
+docker-push: ## Push image.
+	docker push $(CONTROLLER_IMG_MANAGER):$(RELEASE_TAG)
 
 .PHONY: set-manifest
-set-manifest: ## Update manifest image and pull policy
-	$(MAKE) set-manifest-image MANIFEST_IMG=$(CONTROLLER_IMG_CONTROLLER_MANAGER) MANIFEST_TAG=$(RELEASE_TAG) TARGET_RESOURCE="./deploy/base/controller_manager.yaml"
-	$(MAKE) set-manifest-pull-policy PULL_POLICY=IfNotPresent TARGET_RESOURCE="./deploy/base/controller_manager.yaml"
+set-manifest: ## Update manifest image and pull policy.
+	$(MAKE) set-manifest-image MANIFEST_IMG=$(CONTROLLER_IMG_MANAGER) MANIFEST_TAG=$(RELEASE_TAG) TARGET_RESOURCE="./deploy/base/manager.yaml"
+	$(MAKE) set-manifest-pull-policy PULL_POLICY=IfNotPresent TARGET_RESOURCE="./deploy/base/manager.yaml"
 
 .PHONY: set-manifest-pull-policy
-set-manifest-pull-policy: ## Update manifest pull policy
+set-manifest-pull-policy: ## Update manifest pull policy.
 	sed -i'' -e 's@imagePullPolicy: .*@imagePullPolicy: '"$(PULL_POLICY)"'@' $(TARGET_RESOURCE)
 
 .PHONY: set-manifest-image
-set-manifest-image: ## Update manifest image
+set-manifest-image: ## Update manifest image.
 	sed -i'' -e 's@image: .*@image: '"${MANIFEST_IMG}:$(MANIFEST_TAG)"'@' $(TARGET_RESOURCE)
 
 ## --------------------------------------
@@ -160,9 +152,9 @@ set-manifest-image: ## Update manifest image
 
 ##@ hack/tools:
 
-golangci-lint: $(GOLANGCI_LINT) ## Build a local copy of golangci-lint
-controller-gen: $(CONTROLLER_GEN) ## Build a local copy of controller-gen
-conversion-gen: $(CONVERSION_GEN) ## Build a local copy of conversion-gen
+golangci-lint: $(GOLANGCI_LINT) ## Build a local copy of golangci-lint.
+controller-gen: $(CONTROLLER_GEN) ## Build a local copy of controller-gen.
+conversion-gen: $(CONVERSION_GEN) ## Build a local copy of conversion-gen.
 
 $(GOLANGCI_LINT): $(TOOLS_DIR)/go.mod # Build golangci-lint from tools folder.
 	cd $(TOOLS_DIR); go build -tags=tools -o $(BIN_DIR)/golangci-lint github.com/golangci/golangci-lint/cmd/golangci-lint

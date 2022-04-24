@@ -23,11 +23,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
@@ -36,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	"github.com/k8s-cloud-platform/multi-tenants/cmd/controller-manager/app/options"
+	"github.com/k8s-cloud-platform/multi-tenants/cmd/manager/app/options"
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/apis/tenancy/v1alpha1"
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/controllers"
 )
@@ -46,6 +48,8 @@ var (
 )
 
 func init() {
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(appsv1.AddToScheme(scheme))
 	utilruntime.Must(v1alpha1.AddToScheme(scheme))
 }
 
@@ -54,8 +58,8 @@ func NewControllerManagerCommand() *cobra.Command {
 	opts := options.NewOptions()
 
 	cmd := &cobra.Command{
-		Use:  "controller-manager",
-		Long: `KCP controller manager.`,
+		Use:  "manager",
+		Long: `KCP manager for multi-tenants.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := opts.Log.ValidateAndApply(); err != nil {
 				return err
@@ -83,13 +87,7 @@ func NewControllerManagerCommand() *cobra.Command {
 }
 
 func run(ctx context.Context, opts *options.Options) error {
-	config, err := ctrl.GetConfig()
-	if err != nil {
-		klog.ErrorS(err, "unable to load kubeconfig")
-		return err
-	}
-
-	mgr, err := ctrl.NewManager(config, ctrl.Options{
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                        scheme,
 		LeaderElection:                opts.LeaderElection.LeaderElect,
 		LeaderElectionReleaseOnCancel: true,
@@ -99,16 +97,13 @@ func run(ctx context.Context, opts *options.Options) error {
 		LeaseDuration:                 &opts.LeaderElection.LeaseDuration.Duration,
 		RenewDeadline:                 &opts.LeaderElection.RenewDeadline.Duration,
 		RetryPeriod:                   &opts.LeaderElection.RetryPeriod.Duration,
-		//ClientDisableCacheFor: []client.Object{&corev1.Secret{}},
+		ClientDisableCacheFor: []client.Object{
+			&corev1.Secret{},
+			&appsv1.Deployment{},
+		},
 	})
 	if err != nil {
-		klog.ErrorS(err, "unable to start controller-manager")
-		return err
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		klog.ErrorS(err, "unable to new clientset for kubeconfig")
+		klog.ErrorS(err, "unable to start manager")
 		return err
 	}
 
@@ -120,8 +115,11 @@ func run(ctx context.Context, opts *options.Options) error {
 	if namespace == "" {
 		namespace = "default"
 	}
-	etcdSecret, err := clientset.CoreV1().Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
+	etcdSecret := &corev1.Secret{}
+	if err := mgr.GetClient().Get(ctx, types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}, etcdSecret); err != nil {
 		klog.ErrorS(err, "unable to get secret for etcd-secret")
 		return err
 	}
@@ -130,8 +128,6 @@ func run(ctx context.Context, opts *options.Options) error {
 		EtcdSecret:  etcdSecret.Data,
 		EtcdServers: opts.EtcdServers,
 		Client:      mgr.GetClient(),
-		Reader:      mgr.GetAPIReader(),
-		ClientSet:   clientset,
 	}).SetupWithManager(mgr, controller.Options{
 		MaxConcurrentReconciles: opts.ConcurrencyTenantSync,
 	}); err != nil {
@@ -144,9 +140,9 @@ func run(ctx context.Context, opts *options.Options) error {
 		return err
 	}
 
-	klog.Info("starting controller-manager")
+	klog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
-		klog.ErrorS(err, "unable to run controller-manager")
+		klog.ErrorS(err, "unable to run manager")
 		return err
 	}
 
@@ -157,6 +153,9 @@ func run(ctx context.Context, opts *options.Options) error {
 func preStart(ctx context.Context, mgr manager.Manager, opts *options.Options) error {
 	// handle for default tenants
 	for _, tenant := range strings.Split(opts.DefaultTenants, ",") {
+		if tenant == "" {
+			continue
+		}
 		klog.InfoS("init default tenant", "name", tenant)
 		tenantObj := &v1alpha1.Tenant{
 			ObjectMeta: metav1.ObjectMeta{
