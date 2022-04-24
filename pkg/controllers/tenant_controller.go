@@ -140,7 +140,7 @@ func (c *TenantController) reconcileNormal(ctx context.Context, tenant *v1alpha1
 			err := fun(ctx, tenant)
 			if err != nil {
 				klog.ErrorS(err, "unable to handle for phase")
-				conditions.MarkFalse(tenant, v1alpha1.TenantConditionProvisioned, "Failed", "failed to handle phase")
+				conditions.MarkFalse(tenant, v1alpha1.TenantConditionProvisioned, "Failed", "Failed to handle phase")
 				return reconcile.Result{}, err
 			}
 		}
