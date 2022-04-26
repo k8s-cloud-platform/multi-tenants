@@ -1,8 +1,8 @@
 # multi-tenants
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/k8s-cloud-platform/multi-tenants)](https://goreportcard.com/report/github.com/k8s-cloud-platform/multi-tenants)
-[![Releases](https://img.shields.io/github/release/k8s-cloud-platform/multi-tenants/all.svg)](https://github.com/k8s-cloud-platform/multi-tenants/releases)
-[![Coverage Status](https://coveralls.io/repos/github/multi-cluster-platform/mcp/badge.svg?branch=main)](https://coveralls.io/github/k8s-cloud-platform/multi-tenants?branch=main)
+![Go Report Card](https://goreportcard.com/badge/github.com/k8s-cloud-platform/multi-tenants)
+![Releases](https://img.shields.io/github/release/k8s-cloud-platform/multi-tenants)
+![License: Apache-2.0](https://img.shields.io/github/license/k8s-cloud-platform/multi-tenants)
 
 multi tenants within one cluster
 
