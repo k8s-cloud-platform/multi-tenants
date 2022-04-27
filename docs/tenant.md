@@ -328,7 +328,28 @@ spec:
         secretName: kubeconfig-admin
 ```
 
+
+
 ## 2. CRD 设计
 
+```go
+type Tenant struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	Spec   TenantSpec   `json:"spec,omitempty"`
+	Status TenantStatus `json:"status,omitempty"`
+}
 
+type TenantSpec struct {
+}
+
+type TenantStatus struct {
+	Phase string `json:"phase,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+```
+
+1. 确认tenant cluster所属namespace存在
+2. tenant cluster制备过程：secret、kubeconfig、apiserver、controller-manager
+3. 持续检查apiserver、controller-manager部署状态
