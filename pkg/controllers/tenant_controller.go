@@ -116,7 +116,15 @@ func (c *TenantController) reconcileNormal(ctx context.Context, tenant *v1alpha1
 	// ensure namespace
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: tenant.Name,
+			Name: tenant.ClusterNamespaceInHost(),
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: tenant.APIVersion,
+					Kind:       tenant.Kind,
+					Name:       tenant.Name,
+					UID:        tenant.UID,
+				},
+			},
 		},
 	}
 	if _, err := util.CreateIfNotExists(ctx, c.Client, ns, func() error {
@@ -165,12 +173,12 @@ func (c *TenantController) reconcileNormal(ctx context.Context, tenant *v1alpha1
 		return reconcile.Result{}, nil
 	}
 
-	if result, err := checkDeploy(tenant.Name, "kube-apiserver"); err != nil {
+	if result, err := checkDeploy(tenant.ClusterNamespaceInHost(), "kube-apiserver"); err != nil {
 		return reconcile.Result{}, err
 	} else if result.Requeue {
 		return result, nil
 	}
-	if result, err := checkDeploy(tenant.Name, "kube-controller-manager"); err != nil {
+	if result, err := checkDeploy(tenant.ClusterNamespaceInHost(), "kube-controller-manager"); err != nil {
 		return reconcile.Result{}, err
 	} else if result.Requeue {
 		return result, nil

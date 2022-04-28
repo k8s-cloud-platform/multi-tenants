@@ -69,7 +69,7 @@ func (c *TenantController) reconcilePhase(tenant *v1alpha1.Tenant) {
 func (c *TenantController) reconcileSecret(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	secretObj := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: tenant.Name,
+			Namespace: tenant.ClusterNamespaceInHost(),
 			Name:      "server-cert",
 		},
 	}
@@ -181,12 +181,12 @@ func (c *TenantController) reconcileSecret(ctx context.Context, tenant *v1alpha1
 func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	secretObj := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: tenant.Name,
+			Namespace: tenant.ClusterNamespaceInHost(),
 			Name:      "kubeconfig-admin",
 		},
 	}
 	if _, err := controllerutil.CreateIfNotExists(ctx, c.Client, secretObj, func() error {
-		caCert, caKey, err := c.parseCASecret(ctx, tenant.Name, "server-cert")
+		caCert, caKey, err := c.parseCASecret(ctx, tenant.ClusterNamespaceInHost(), "server-cert")
 		if err != nil {
 			klog.ErrorS(err, "unable to parse ca secret")
 			return err
@@ -233,12 +233,12 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 
 	secretObj = &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: tenant.Name,
+			Namespace: tenant.ClusterNamespaceInHost(),
 			Name:      "kubeconfig-controller-manager",
 		},
 	}
 	if _, err := controllerutil.CreateIfNotExists(ctx, c.Client, secretObj, func() error {
-		caCert, caKey, err := c.parseCASecret(ctx, tenant.Name, "server-cert")
+		caCert, caKey, err := c.parseCASecret(ctx, tenant.ClusterNamespaceInHost(), "server-cert")
 		if err != nil {
 			klog.ErrorS(err, "unable to parse ca secret")
 			return err
@@ -288,8 +288,8 @@ func (c *TenantController) reconcileKubeConfig(ctx context.Context, tenant *v1al
 func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
+			Namespace: tenant.ClusterNamespaceInHost(),
 			Name:      "kube-apiserver",
-			Namespace: tenant.Name,
 		},
 	}
 	if _, err := controllerutil.CreateIfNotExists(ctx, c.Client, deployment, func() error {
@@ -428,8 +428,8 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
+			Namespace: tenant.ClusterNamespaceInHost(),
 			Name:      "kube-apiserver",
-			Namespace: tenant.Name,
 		},
 	}
 	if _, err := controllerutil.CreateIfNotExists(ctx, c.Client, service, func() error {
@@ -467,8 +467,8 @@ func (c *TenantController) reconcileAPIServer(ctx context.Context, tenant *v1alp
 func (c *TenantController) reconcileControllerManager(ctx context.Context, tenant *v1alpha1.Tenant) error {
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
+			Namespace: tenant.ClusterNamespaceInHost(),
 			Name:      "kube-controller-manager",
-			Namespace: tenant.Name,
 		},
 	}
 	if _, err := controllerutil.CreateIfNotExists(ctx, c.Client, deployment, func() error {

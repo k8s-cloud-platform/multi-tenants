@@ -66,6 +66,10 @@ func (t *TenantStatus) SetPhase(p TenantPhase) {
 	t.Phase = string(p)
 }
 
+func (t *Tenant) ClusterNamespaceInHost() string {
+	return "tenant-" + t.Name
+}
+
 func (t *Tenant) GetConditions() []metav1.Condition {
 	return t.Status.Conditions
 }
