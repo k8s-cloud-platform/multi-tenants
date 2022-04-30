@@ -342,10 +342,12 @@ type Tenant struct {
 }
 
 type TenantSpec struct {
+  // Weak, Strong
+  IsolationLevel string `json:"isolationLevel,omitempty"`
 }
 
 type TenantStatus struct {
-	Phase string `json:"phase,omitempty"`
+	Phase      string             `json:"phase,omitempty"`
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 ```
