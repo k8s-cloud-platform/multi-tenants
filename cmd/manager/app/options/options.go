@@ -30,7 +30,6 @@ import (
 type Options struct {
 	EtcdServers           string
 	EtcdSecret            string
-	DefaultTenants        string
 	ConcurrencyTenantSync int
 
 	Log            *logs.Options
@@ -55,8 +54,6 @@ func (o *Options) AddFlags(flags *pflag.FlagSet) {
 		"Etcd servers, used for tenant apiserver connect to host etcd clusters, use ',' to separate.")
 	flags.StringVar(&o.EtcdSecret, "etcd-secret", "",
 		"Reference of etcd secret, use [namespace]/[name] or [name](use default namespace).")
-	flags.StringVar(&o.DefaultTenants, "default-tenants", "",
-		"Default tenants to when startup, use ',' to separate, default to ''.")
 
 	flags.IntVar(&o.ConcurrencyTenantSync, "concurrency-tenant-sync", 10,
 		"Concurrency of tenant controllers to sync.")

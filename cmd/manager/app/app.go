@@ -20,13 +20,11 @@ import (
 	"context"
 	"flag"
 	"runtime/debug"
-	"strings"
 
 	"github.com/spf13/cobra"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -36,7 +34,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/k8s-cloud-platform/multi-tenants/cmd/manager/app/options"
 	"github.com/k8s-cloud-platform/multi-tenants/pkg/apis/tenancy/v1alpha1"
@@ -139,11 +136,6 @@ func run(ctx context.Context, opts *options.Options) error {
 		return err
 	}
 
-	if err := preStart(ctx, mgr, opts); err != nil {
-		klog.ErrorS(err, "unable to handle pre start")
-		return err
-	}
-
 	klog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
 		klog.ErrorS(err, "unable to run manager")
@@ -151,38 +143,5 @@ func run(ctx context.Context, opts *options.Options) error {
 	}
 
 	// never reach here
-	return nil
-}
-
-func preStart(ctx context.Context, mgr manager.Manager, opts *options.Options) error {
-	if opts.DefaultTenants == "" {
-		klog.V(1).Info("default-tenants is empty, skip")
-		return nil
-	}
-
-	// handle for default tenants
-	for _, tenant := range strings.Split(opts.DefaultTenants, ",") {
-		klog.InfoS("init default tenant", "name", tenant)
-
-		tenantObj := &v1alpha1.Tenant{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tenant,
-			},
-		}
-		if err := mgr.GetAPIReader().Get(ctx, client.ObjectKeyFromObject(tenantObj), tenantObj); err != nil {
-			if !apierrors.IsNotFound(err) {
-				klog.ErrorS(err, "unable to get tenant", "name", tenant)
-				return err
-			}
-		} else {
-			klog.InfoS("tenant already exists", "name", tenant)
-			continue
-		}
-		if err := mgr.GetClient().Create(ctx, tenantObj); err != nil {
-			klog.ErrorS(err, "unable to create tenant", "name", tenant)
-			return err
-		}
-		klog.InfoS("success to create tenant", "name", tenant)
-	}
 	return nil
 }
